@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/select.h>
+#include <time.h>
 
 #define REFRESH_TIME 200
 #define HEIGHT 20
@@ -27,6 +28,15 @@ int pos1[2]= {5,9};  //y, x
 int pos2[2]= {5,8};
 
 int previouslyPressedKey=RIGHT;
+int gameOver=0;
+
+
+struct GameInformation{
+    int gameOver;
+    int previouslyPressedKey;
+    int score;
+    int foodCoord[2];
+} GameInfo={0,RIGHT,0};
 
 struct Snake_Body {
     int y;
@@ -87,8 +97,9 @@ void appendBuff(struct GameBuff *gb,char *str,int len){
     gb->len+=len;
 }
 
-char isNull[10]="tr";
-
+int getRandomNumber(int maxRange){
+    return (rand() % maxRange) +1;
+}
 // void addBreakPoint(int x,int y,int d){
 //     for(int i=0;i<Snake.bodyWidth;i++){
 //         int  (*newBreakPoint)[3]= realloc(Snake.body[i].breakPoints,sizeof(int[3]) * (Snake.body[i].breakPointWidth+1));
@@ -107,6 +118,7 @@ char isNull[10]="tr";
 
 
 void addBreakPoint(struct Snake_Body *body,int x, int y , int d){
+    
         int  (*newBreakPoint)[3]= realloc(body->breakPoints,sizeof(int[3]) * (body->breakPointWidth+1));
         if(newBreakPoint==NULL) return;
 
@@ -149,10 +161,12 @@ void addSnakeBody(int direction){
 }
 
 void updateBody(struct Snake_Body *body){
-    for(int i=0;i<body->breakPointWidth;i++){
-        if(body->breakPoints[i][X] == body->x && body->breakPoints[i][Y]== body->y){
-            body->direction= body->breakPoints[i][dir];
-        }
+
+    if(body->breakPointWidth>0 && body->breakPoints[0][X] == body->x && body->breakPoints[0][Y]== body->y){
+            body->direction= body->breakPoints[0][dir];
+            body->breakPoints= memmove(body->breakPoints[0],body->breakPoints[1],sizeof(int[3])* (body->breakPointWidth-1));
+            body->breakPointWidth--;
+
     }
     
     if(body->direction==RIGHT){
@@ -172,29 +186,79 @@ void updateBody(struct Snake_Body *body){
     }
 }
 
+int checkIfSpaceIsFree(int rx,int ry){
+    int isSpaceFree=1;
+     for(int k=0;k<Snake.bodyWidth;k++){
+                int x= Snake.body[k].x;
+                int y= Snake.body[k].y;
+                if(ry==y && rx==x){
+                        isSpaceFree=0; 
+                       break;
+                }
+            }
+    if(Snake.head[X]== rx && Snake.head[Y]== ry){
+        isSpaceFree=0;
+    }
+
+    return isSpaceFree;
+}
+
+void generateFood(){
+    int rx;
+    int ry;
+    while(1){
+            rx= getRandomNumber(WIDTH);
+            ry= getRandomNumber(HEIGHT);
+            if(checkIfSpaceIsFree(rx,ry)) break;
+    }
+
+    GameInfo.foodCoord[X]= rx;
+    GameInfo.foodCoord[Y]= ry;
+
+}
+
 
 
 void checkFoodEaten(){
     if(Snake.head[X]==10 && Snake.head[Y]==1){
-        
         addSnakeBody(LEFT);
         addSnakeBody(LEFT);
         addSnakeBody(LEFT);
         addSnakeBody(LEFT);
-        addSnakeBody(LEFT);
-        
     }
 }
 
-void updateSnakePosition(int c){
+int isGameOver(){
+        if(Snake.head[Y]==0 || Snake.head[Y]== HEIGHT || Snake.head[X]==0 || Snake.head[X]==WIDTH){
+            return 1;
+            printf("Collision Detected: %d %d",Snake.head[X],Snake.head[Y]);
+        }
+        printf("Coordinates: %d %d",Snake.head[X],Snake.head[Y]);
+        fflush(NULL);
+    for(int i=0;i<Snake.bodyWidth;i++){
+        for(int j=0;j<Snake.body[i].breakPointWidth;j++){
+        
+            if((Snake.head[X]== Snake.body[i].breakPoints[j][X] && Snake.head[Y]== Snake.body[i].breakPoints[j][Y])){
+                return 1;
+
+                      printf("Collision Detected: %d %d",Snake.head[X],Snake.head[Y]);
+                      fflush(NULL);
+                      usleep(REFRESH_TIME * 1000);
+            }
+        }
+    }
+
+    return 0;
+}
+
+int updateSnakePosition(int c){
     if((c==UP || c==DOWN || c==LEFT || c==RIGHT) && c!=previouslyPressedKey){
         previouslyPressedKey=c;
-        // addBreakPoint(Snake.head[X],Snake.head[Y],c);
 
     for(int i=0;i<Snake.bodyWidth;i++){
-       addBreakPoint(&Snake.body[i],Snake.head[X],Snake.head[Y],c);
+        addBreakPoint(&Snake.body[i],Snake.head[X],Snake.head[Y],c);    
+        }
     }
-}
 
     switch(c){
         case UP:
@@ -216,6 +280,8 @@ void updateSnakePosition(int c){
             
         }
         checkFoodEaten();
+       return isGameOver();
+     
 
 }
 
@@ -227,15 +293,20 @@ int readKeyPress(int currentKey){
     
         switch(c){
             case 'w':
+                if(currentKey==DOWN) return DOWN;
                 return UP;
                 break;
             case 's':
+                if(currentKey==UP) return UP;
                 return DOWN;
                 break;
             case 'a':
+                if(currentKey==RIGHT) return RIGHT;
                 return LEFT;
                 break;
             case 'd':
+                if(currentKey==LEFT) return LEFT;
+
                 return RIGHT;
                 break;            
         }
@@ -256,12 +327,17 @@ void drawGame(){
                 appendBuff(&buf,"-",1);
                 continue;
             }
+            if(gameOver) {
+                appendBuff(&buf," ",1);
+                continue;
+            };
             if(i==(Snake.head[0]) && j==(Snake.head[1])){
                 appendBuff(&buf,"o",1);
                 continue;
             }
               
             int hasBody=0;
+            // i can check if a body exist in the i and j of the snake body instead of the k and then determine to continue or not
             for(int k=0;k<Snake.bodyWidth;k++){
                 int x= Snake.body[k].x;
                 int y= Snake.body[k].y;
@@ -274,9 +350,11 @@ void drawGame(){
             if(hasBody) continue;
             appendBuff(&buf," ",1);
         }
+        
         if(i != HEIGHT){
             appendBuff(&buf,"\r\n",2);
         }
+        
     }
   
     write(STDOUT_FILENO, buf.buf, buf.len);
@@ -285,17 +363,17 @@ void drawGame(){
 int main(){
     enableRawMode();
     int currentKey=RIGHT;
+    srand(time(NULL));
     while(1){
-        // usleep(REFRESH_TIME * 1000);
         currentKey=readKeyPress(currentKey);
-
-        updateSnakePosition(currentKey);
-        // if(Snake.body!=NULL){
-
-
-        usleep(100 * 1000);
+        gameOver=updateSnakePosition(currentKey);
         drawGame();
-        
+        if(gameOver){
+            printf("\nGame Over\n");
+            fflush(NULL);
+            break;
+        }
+        usleep(REFRESH_TIME * 1000);
     }
 }
 
@@ -304,3 +382,13 @@ int main(){
     //   printf("New breakpoint added %d %d %d",Snake.head[X],Snake.head[Y],c);
     //     fflush(NULL);
     //         usleep(REFRESH_TIME * 1000);
+
+        //             for(int j=0;j<Snake.bodyWidth;j++){
+    //     printf("\n Body [%d] breakpoints: Total: %d ",j,Snake.body[j].breakPointWidth)  ;
+    //     for(int k=0;k<Snake.body[j].breakPointWidth;k++){
+    //         printf("\tX: %d | Y: %d dir: %d",Snake.body[j].breakPoints[k][X],Snake.body[j].breakPoints[k][Y],Snake.body[j].breakPoints[k][dir]);
+    //     }
+
+    // }
+    // fflush(NULL);  
+    // usleep(5000 * 1000);
