@@ -94,6 +94,8 @@ void appendBuff(struct GameBuff *gb,char *str,int len){
     gb->len+=len;
 }
 
+
+
 int getRandomNumber(int maxRange){
     return ((rand() % maxRange) +1);
 }
@@ -258,6 +260,7 @@ int updateSnakePosition(int c){
         default:
      }
         for(int i=0;i<Snake.bodyWidth;i++){
+            
              updateBody(&Snake.body[i]);
         }
         
@@ -356,6 +359,14 @@ void drawGame(){
     }
   
     write(STDOUT_FILENO, buf.buf, buf.len);
+    free(buf.buf);
+}
+
+void cleanUp(){
+    for(int i=0;i<Snake.bodyWidth;i++){
+        free(Snake.body[i].breakPoints);
+    }
+    free(Snake.body);
 }
 
 int main(){
@@ -369,6 +380,7 @@ int main(){
         drawGame();
         printf("\nScore: %d\n",GameInfo.score);
         if(GameInfo.gameOver){
+           cleanUp();
             break;
         }
         fflush(NULL);
