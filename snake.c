@@ -12,8 +12,6 @@
 #define WIDTH 60
 #define Y 0
 #define X 1
-#define dir 2
-
 
 enum DIRECTIONS {
     UP=1000,
@@ -23,10 +21,6 @@ enum DIRECTIONS {
 };
 
 struct termios usrDefault;
-
-int pos1[2]= {5,9};  //y, x
-int pos2[2]= {5,8};
-
 
 struct GameInformation{
     int gameOver;
@@ -38,9 +32,6 @@ struct GameInformation{
 struct Snake_Body {
     int y;
     int x;
-    int (*breakPoints)[3];
-    int breakPointWidth;
-    int direction;
 };
 
 
@@ -81,66 +72,19 @@ void enableRawMode(){
 }
 
 
-
-void appendBuff(struct GameBuff *gb,char *str,int len){
-   char *new= realloc(gb->buf, gb->len + len);
-
-    if(new==NULL){
-        return;
-    }
-
-    memcpy(&new[gb->len],str,len);
-    gb->buf= new;
-    gb->len+=len;
-}
-
-
-
 int getRandomNumber(int maxRange){
     return ((rand() % maxRange) +1);
 }
 
 
 
-void addBreakPoint(struct Snake_Body *body,int x, int y , int d){
-    
-        int  (*newBreakPoint)[3]= realloc(body->breakPoints,sizeof(int[3]) * (body->breakPointWidth+1));
-        if(newBreakPoint==NULL) return;
-
-        body->breakPoints= newBreakPoint;
-
-        body->breakPoints[body->breakPointWidth][X]= x;
-        body->breakPoints[body->breakPointWidth][Y]= y;
-        body->breakPoints[body->breakPointWidth][dir]= d;
-
-        body->breakPointWidth++;
-
-}
-
-
-
-void addSnakeBody(int direction){
+void addSnakeBody(){
     int lastPosX= Snake.bodyWidth==0? Snake.head[X] : Snake.body[Snake.bodyWidth-1].x;
     int lastPosY= Snake.bodyWidth==0? Snake.head[Y] : Snake.body[Snake.bodyWidth-1].y;
 
-    direction=Snake.bodyWidth!=0? Snake.body[Snake.bodyWidth-1].direction: direction;
 
-    if(direction==UP){
-        lastPosY+=1;
-    }else if(direction==DOWN){
-        lastPosY-=1;
-    }else if(direction==LEFT){
-        lastPosX+=1;
-    }else if(direction==RIGHT){
-        lastPosX-=1;
-    }
+    struct Snake_Body added = {.y=lastPosY,.x=lastPosX};
 
-    int breakPointWidth= Snake.bodyWidth==0? 0 : Snake.body[Snake.bodyWidth-1].breakPointWidth;
-    struct Snake_Body added = {.y=lastPosY,.x=lastPosX, .breakPoints=NULL,.breakPointWidth=0,.direction=direction};
-
-    for(int i=0;i<breakPointWidth;i++){
-        addBreakPoint(&added,Snake.body[Snake.bodyWidth-1].breakPoints[i][X],Snake.body[Snake.bodyWidth-1].breakPoints[i][Y],Snake.body[Snake.bodyWidth-1].breakPoints[i][dir]);
-    }
 
     struct Snake_Body *new = realloc(Snake.body,sizeof(struct Snake_Body)*( Snake.bodyWidth+1));
 
@@ -153,29 +97,15 @@ void addSnakeBody(int direction){
     Snake.body=new;
 }
 
-void updateBody(struct Snake_Body *body){
+void updateBody(){
 
-    if(body->breakPointWidth>0 && body->breakPoints[0][X] == body->x && body->breakPoints[0][Y]== body->y){
-            body->direction= body->breakPoints[0][dir];
-             memmove(body->breakPoints,body->breakPoints+1,sizeof(int[3])* (body->breakPointWidth-1));
-            body->breakPointWidth--;
-
+    for(int i=Snake.bodyWidth-1;i>0;i--){
+        Snake.body[i].x= Snake.body[i-1].x; 
+        Snake.body[i].y= Snake.body[i-1].y; 
     }
-    
-    if(body->direction==RIGHT){
-        body->x++;
-    }
-
-    if(body->direction==LEFT){
-        body->x--;
-    }
-
-    if(body->direction==UP){
-        body->y--;
-    }
-
-    if(body->direction==DOWN){
-        body->y++;
+    if(Snake.bodyWidth!=0){
+        Snake.body[0].x= Snake.head[X];
+        Snake.body[0].y= Snake.head[Y];
     }
 }
 
@@ -215,7 +145,7 @@ void generateFood(){
 void checkFoodEaten(){
     if(Snake.head[X]==GameInfo.foodCoord[X] && Snake.head[Y]==GameInfo.foodCoord[Y]){
         GameInfo.score++;
-        addSnakeBody(GameInfo.previouslyPressedKey);
+        addSnakeBody();
         generateFood();
     }
 }
@@ -237,34 +167,27 @@ int isGameOver(){
 int updateSnakePosition(int c){
     if((c==UP || c==DOWN || c==LEFT || c==RIGHT) && c!=GameInfo.previouslyPressedKey){
         GameInfo.previouslyPressedKey=c;
-
-     for(int i=0;i<Snake.bodyWidth;i++){
-        addBreakPoint(&Snake.body[i],Snake.head[X],Snake.head[Y],c);    
     }
-
-    }
-
-    switch(c){
-        case UP:
-            Snake.head[Y]--;
-            break;
-        case DOWN:
-            Snake.head[Y]++;
-            break;
-        case LEFT:
-            Snake.head[X]--;
-            break;
-        case RIGHT:
-            Snake.head[X]++;
-            break;
-        default:
-     }
-        for(int i=0;i<Snake.bodyWidth;i++){
-            
-             updateBody(&Snake.body[i]);
+  
+     updateBody();
+        checkFoodEaten();
+     
+     switch(c){
+         case UP:
+         Snake.head[Y]--;
+         break;
+         case DOWN:
+         Snake.head[Y]++;
+         break;
+         case LEFT:
+         Snake.head[X]--;
+         break;
+         case RIGHT:
+         Snake.head[X]++;
+         break;
+         default:
         }
         
-        checkFoodEaten();
        return isGameOver();
 }
 
@@ -298,74 +221,53 @@ int readKeyPress(int currentKey){
     }
     return currentKey;
 }
+
+
 void drawGame(){
-    struct GameBuff buf= GAME_BUFF_INIT;
-     appendBuff(&buf,"\x1b[H\x1b[J",6);
+    char gameRenderData[HEIGHT][WIDTH];
 
+
+    memset(gameRenderData,' ',HEIGHT*WIDTH);
     for(int i=0;i<=HEIGHT;i++){
-        for(int j=0;j<=WIDTH;j++){
-     
-            if(i==0 || i== HEIGHT || j==0 || j==WIDTH) {
-                appendBuff(&buf,"-",1);
-                continue;
-            }
-            
-            if(GameInfo.gameOver) {
-                char score[20];
-                int scoreLen=snprintf(score,sizeof(score),"Score: %d",GameInfo.score);
-                if(i== (HEIGHT/2)-1 && j== ((WIDTH/2)-(scoreLen/2))){
-                    appendBuff(&buf,score,scoreLen);
-                    j+=(scoreLen-1);
-                    continue;
-                }
-                if(i== HEIGHT/2 && j== ((WIDTH/2)-4)){
-                    appendBuff(&buf,"Game Over",9);
-                    j+=8;
-                    continue;
-                }
-                appendBuff(&buf," ",1);
-                continue;
-            };
-            if(i==(Snake.head[0]) && j==(Snake.head[1])){
-                appendBuff(&buf,"o",1);
-                continue;
-            }
-              
-            int hasBody=0;
-            for(int k=0;k<Snake.bodyWidth;k++){
-                int x= Snake.body[k].x;
-                int y= Snake.body[k].y;
-                if(i==y && j==x){
-                       hasBody=1;
-                       appendBuff(&buf,"#",1);
-                       continue;
-                }
-            }
-            
-            if(j==GameInfo.foodCoord[X] && i==GameInfo.foodCoord[Y]){
-                 appendBuff(&buf,"f",1);
-                continue;
-            
-            }
-
-            if(hasBody) continue;
-            appendBuff(&buf," ",1);
-        }
-        
-        if(i != HEIGHT){
-            appendBuff(&buf,"\r\n",2);
-        }
-        
+        gameRenderData[i][0]='-';
+        gameRenderData[i][WIDTH]='-';
     }
-  
-    write(STDOUT_FILENO, buf.buf, buf.len);
-    free(buf.buf);
+      for(int i=0;i<=WIDTH;i++){
+        gameRenderData[0][i]='-';
+        gameRenderData[HEIGHT][i]='-';
+    }
+
+    if(GameInfo.gameOver){
+        char score[20];
+        int scoreLen=snprintf(score,sizeof(score),"Score: %d",GameInfo.score);
+        memcpy(&gameRenderData[(HEIGHT/2)-1][(WIDTH/2)-(scoreLen/2)],score,scoreLen);
+        memcpy(&gameRenderData[HEIGHT/2][(WIDTH/2)-4],"Game Over",9);
+    }else{
+        gameRenderData[Snake.head[Y]][Snake.head[X]]='o';
+        for(int i=0;i<Snake.bodyWidth;i++){
+            gameRenderData[Snake.body[i].y][Snake.body[i].x]='#';
+        }
+        gameRenderData[GameInfo.foodCoord[Y]][GameInfo.foodCoord[X]]='f';
+    }
+
+      char buffer[(HEIGHT+1) * (WIDTH+2 +1)];
+        char *p= buffer;
+        
+        for(int i=0;i<=HEIGHT;i++){
+            memcpy(p,gameRenderData[i],WIDTH+1);
+            p+=WIDTH+1;
+            if(i<HEIGHT){
+                *p++= '\r';
+                *p++= '\n';
+            }
+        }
+        
+        write(STDOUT_FILENO,"\x1b[H\x1b[J",6);
+        write(STDOUT_FILENO,buffer,p-buffer); 
 }
 
+
 void cleanUp(){
-    for(int i=0;i<Snake.bodyWidth;i++){
-        free(Snake.body[i].breakPoints);
-    }
     free(Snake.body);
 }
 
